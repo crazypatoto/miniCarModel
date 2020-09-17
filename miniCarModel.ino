@@ -26,6 +26,43 @@ byte rx_buffer[SERIAL_RX_BUFFER_SIZE] = {0};
 uint16_t rx_index = 0;
 uint32_t lastRxTime = 0;
 
+IntervalTimer timer1;
+IntervalTimer timer2;
+
+float x = 0;
+float y = 0;
+float angle = 0;
+int32_t prevPosL = 0;
+int32_t prevPosR = 0;
+
+void timer1_ISR() {
+  int32_t currentPosL = motorL.currentPosition();
+  int32_t currentPosR = motorR.currentPosition();
+
+  float Dl = 2.0 * M_PI * WHEEL_RADIUS * (currentPosL - prevPosL) / DRIVER_PPR;
+  float Dr = 2.0 * M_PI * WHEEL_RADIUS * (currentPosR - prevPosR) / DRIVER_PPR;
+  float Dc = (Dl + Dr) / 2;
+  x += Dc * cos(angle);
+  y += Dc * sin(angle);
+  angle += (Dl - Dr) / AXLE_LENGTH;
+  prevPosL = currentPosL;
+  prevPosR = currentPosR;
+}
+
+void timer2_ISR() { 
+  Serial.print(motorL.currentPosition());
+  Serial.print("\t");
+  Serial.println(motorR.currentPosition());
+
+  Serial.print("x: ");
+  Serial.print(x);
+  Serial.print(" y: ");
+  Serial.print(y);
+  Serial.print(" angle: ");
+  Serial.println((angle/M_PI*180));
+
+}
+
 void setup() {
   // put your setup code here, to run once:
   pinMode(LED_BUILTIN, OUTPUT);
@@ -33,6 +70,8 @@ void setup() {
   Serial.begin(115200);
   motorL.setMaxSpeed(5000);
   motorR.setMaxSpeed(5000);
+  timer1.begin(timer1_ISR, 1000);
+  timer2.begin(timer2_ISR, 100000);
 }
 
 void loop() {
@@ -51,6 +90,24 @@ void serialEvent3() {
   }
 }
 
+void serialEvent() {
+  while (Serial.available()) {
+    Serial.read();
+    float speedL = motorL.speed();
+    float speedR = motorR.speed();
+    motorL.setCurrentPosition(0);
+    motorR.setCurrentPosition(0);
+    motorL.setSpeed(speedL);
+    motorR.setSpeed(speedR);
+    x = 0;
+    y = 0;
+    angle = 0;
+    prevPosL = 0;
+    prevPosR = 0;
+  }
+}
+
+
 void handleReceivedData() {
   if (((millis() - lastRxTime) > SERIAL_RX_TIMEOUT_MS) && (rx_index > 0)) {
     if ((rx_index == 6) && (rx_buffer[0] == 'S') && (rx_buffer[5] == 'E')) {
@@ -65,8 +122,8 @@ void handleReceivedData() {
 }
 
 void computerWheelVelocity() {
-  Vl = V - ( ( (W/10000.0) * AXLE_LENGTH ) / 2 );
-  Vr = V + ( ( (W/10000.0) * AXLE_LENGTH ) / 2 );
+  Vl = V - ( ( (W / 10000.0) * AXLE_LENGTH ) / 2 );
+  Vr = V + ( ( (W / 10000.0) * AXLE_LENGTH ) / 2 );
   Serial3.print("Vl: ");
   Serial3.print(Vl);
   Serial3.print(" Vr: ");
