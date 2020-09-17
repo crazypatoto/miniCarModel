@@ -1,7 +1,7 @@
 #include "src/AccelStepper/AccelStepper.h"
 
 #define SERIAL_RX_BUFFER_SIZE (128)
-#define SERIAL_RX_TIMEOUT_MS (3)  //ms Timeout
+#define SERIAL_RX_TIMEOUT_US (500) //microsecond Timeout
 #define DRIVER_L_PLS_PIN (3)      //Left Driver Pulse Pin
 #define DRIVER_L_DIR_PIN (4)      //Left Driver Direction Pin
 #define DRIVER_R_PLS_PIN (5)      //Right Driver Pulse Pin
@@ -35,7 +35,14 @@ float angle = 0;
 int32_t prevPosL = 0;
 int32_t prevPosR = 0;
 
-void timer1_ISR() {
+void calculateOdometry() {
+  static uint32_t lastOdometryTime = 0;
+  uint32_t now = millis();
+  if ( (now - lastOdometryTime) < 10) {
+    return;
+  }
+  lastOdometryTime = now;
+
   int32_t currentPosL = motorL.currentPosition();
   int32_t currentPosR = motorR.currentPosition();
 
@@ -49,7 +56,7 @@ void timer1_ISR() {
   prevPosR = currentPosR;
 }
 
-void timer2_ISR() { 
+void timer2_ISR() {
   Serial.print(motorL.currentPosition());
   Serial.print("\t");
   Serial.println(motorR.currentPosition());
@@ -59,8 +66,8 @@ void timer2_ISR() {
   Serial.print(" y: ");
   Serial.print(y);
   Serial.print(" angle: ");
-  Serial.println((angle/M_PI*180));
-
+  //Serial.println((atan2(sin(angle), cos(angle)) / M_PI * 180));
+  Serial.println((atan2(sin(angle), cos(angle))));
 }
 
 void setup() {
@@ -68,9 +75,8 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   Serial3.begin(115200);
   Serial.begin(115200);
-  motorL.setMaxSpeed(5000);
-  motorR.setMaxSpeed(5000);
-  timer1.begin(timer1_ISR, 1000);
+  motorL.setMaxSpeed(convertToPPS(2000)); //max speed of 2m/s
+  motorR.setMaxSpeed(convertToPPS(2000)); //max speed of 2m/s
   timer2.begin(timer2_ISR, 100000);
 }
 
@@ -80,13 +86,14 @@ void loop() {
   motorR.runSpeed();
 
   handleReceivedData();
+  calculateOdometry();
 }
 
 void serialEvent3() {
   while (Serial3.available()) {
     byte inByte = (byte)Serial3.read();
     rx_buffer[rx_index++] = inByte;
-    lastRxTime = millis();
+    lastRxTime = micros();
   }
 }
 
@@ -107,15 +114,34 @@ void serialEvent() {
   }
 }
 
-
+//Packet Format:
+//  byte[0] 'S' Fixed character 'S'
+//  byte[1]  High Byte of Linear Velocity (mm/s)
+//  byte[2]  Low Byte of Linear Velocity (mm/s)
+//  byte[3]  High Byte of Angular Velocity (10000*rad/s)
+//  byte[4]  Low Byte of Angular Velocity (10000*rad/s)
+//  byte[5] 'E' Fixed character 'E'
 void handleReceivedData() {
-  if (((millis() - lastRxTime) > SERIAL_RX_TIMEOUT_MS) && (rx_index > 0)) {
+  if (((micros() - lastRxTime) > SERIAL_RX_TIMEOUT_US) && (rx_index > 0)) {
     if ((rx_index == 6) && (rx_buffer[0] == 'S') && (rx_buffer[5] == 'E')) {
-      Serial3.println("Right!");
       V = (rx_buffer[1] << 8) | rx_buffer[2];
       W = (rx_buffer[3] << 8) | rx_buffer[4];
       computerWheelVelocity();
+    } else if ((rx_index == 3) && (rx_buffer[0] == 'O') && (rx_buffer[1] == 'D') && (rx_buffer[2] == 'M')) {
+      byte txbuff[6] = {0};
+      int16_t _x = (int16_t)x;
+      int16_t _y = (int16_t)y;
+      int16_t _angle = (int16_t)(atan2(sin(angle), cos(angle)) * 10000); //atan2(sin(angle),cos(angle)) keeps angle between -PI ~ PI
+
+      txbuff[0] = (_x >> 8) & 0xFF;
+      txbuff[1] = _x & 0xFF;
+      txbuff[2] = (_y >> 8) & 0xFF;
+      txbuff[3] = _y & 0xFF;
+      txbuff[4] = (_angle >> 8) & 0xFF;
+      txbuff[5] = _angle & 0xFF;
+      Serial3.write(txbuff,6);          
     }
+    Serial.println(rx_index);
     rx_index = 0;
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
   }
@@ -124,15 +150,16 @@ void handleReceivedData() {
 void computerWheelVelocity() {
   Vl = V - ( ( (W / 10000.0) * AXLE_LENGTH ) / 2 );
   Vr = V + ( ( (W / 10000.0) * AXLE_LENGTH ) / 2 );
-  Serial3.print("Vl: ");
-  Serial3.print(Vl);
-  Serial3.print(" Vr: ");
-  Serial3.println(Vr);
   motorL.setSpeed(convertToPPS(Vl));
   motorR.setSpeed(convertToPPS(Vr));
+
+  Serial.print("Vl: ");
+  Serial.print(Vl);
+  Serial.print(" Vr: ");
+  Serial.println(Vr);
 }
 
-//Coverts
+//Coverts mm/s to pps(pulse per second)
 float convertToPPS(float v) {
   return (DRIVER_PPR / wheel_circumference * v);
 }
