@@ -13,7 +13,7 @@
 //Car Model Variables
 const float wheel_circumference = 2 * WHEEL_RADIUS * M_PI;  //Wheel's Circumference in mm
 int16_t V  = 0; //Car Linear Velocity (mm/s)
-int16_t W  = 0; //Car Angular Velocity (10000*rad/s)
+int16_t W1000  = 0; //Car Angular Velocity (10000*rad/s)
 float Vl = 0;   //Left Wheel Velocity (mm/s)
 float Vr = 0;   //Right Wheel Velocity (mm/s)
 
@@ -51,7 +51,7 @@ void calculateOdometry() {
   float Dc = (Dl + Dr) / 2;
   x += Dc * cos(angle);
   y += Dc * sin(angle);
-  angle += (Dl - Dr) / AXLE_LENGTH;
+  angle += (Dr - Dl) / AXLE_LENGTH;
   prevPosL = currentPosL;
   prevPosR = currentPosR;
 }
@@ -125,9 +125,11 @@ void handleReceivedData() {
   if (((micros() - lastRxTime) > SERIAL_RX_TIMEOUT_US) && (rx_index > 0)) {
     if ((rx_index == 6) && (rx_buffer[0] == 'S') && (rx_buffer[5] == 'E')) {
       V = (rx_buffer[1] << 8) | rx_buffer[2];
-      W = (rx_buffer[3] << 8) | rx_buffer[4];
+      W1000 = (rx_buffer[3] << 8) | rx_buffer[4];
       computerWheelVelocity();
-    } else if ((rx_index == 3) && (rx_buffer[0] == 'O') && (rx_buffer[1] == 'D') && (rx_buffer[2] == 'M')) {
+
+    }
+    else if ((rx_index == 3) && (rx_buffer[0] == 'O') && (rx_buffer[1] == 'D') && (rx_buffer[2] == 'M')) {
       byte txbuff[6] = {0};
       int16_t _x = (int16_t)x;
       int16_t _y = (int16_t)y;
@@ -139,7 +141,19 @@ void handleReceivedData() {
       txbuff[3] = _y & 0xFF;
       txbuff[4] = (_angle >> 8) & 0xFF;
       txbuff[5] = _angle & 0xFF;
-      Serial3.write(txbuff,6);          
+      Serial3.write(txbuff, 6);
+    } else if ((rx_index == 3) && (rx_buffer[0] == 'C') && (rx_buffer[1] == 'L') && (rx_buffer[2] == 'R')) {
+      float speedL = motorL.speed();
+      float speedR = motorR.speed();
+      motorL.setCurrentPosition(0);
+      motorR.setCurrentPosition(0);
+      motorL.setSpeed(speedL);
+      motorR.setSpeed(speedR);
+      x = 0;
+      y = 0;
+      angle = 0;
+      prevPosL = 0;
+      prevPosR = 0;
     }
     Serial.println(rx_index);
     rx_index = 0;
@@ -148,8 +162,8 @@ void handleReceivedData() {
 }
 
 void computerWheelVelocity() {
-  Vl = V - ( ( (W / 10000.0) * AXLE_LENGTH ) / 2 );
-  Vr = V + ( ( (W / 10000.0) * AXLE_LENGTH ) / 2 );
+  Vl = V - ( ( (W1000 / 1000.0) * AXLE_LENGTH ) / 2 );
+  Vr = V + ( ( (W1000 / 1000.0) * AXLE_LENGTH ) / 2 );
   motorL.setSpeed(convertToPPS(Vl));
   motorR.setSpeed(convertToPPS(Vr));
 
