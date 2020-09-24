@@ -6,7 +6,7 @@
 #define DRIVER_L_DIR_PIN (4)      //Left Driver Direction Pin
 #define DRIVER_R_PLS_PIN (5)      //Right Driver Pulse Pin
 #define DRIVER_R_DIR_PIN (6)      //Right Driver Direction Pin
-#define DRIVER_PPR (500)          //Pulse Per Round (Resolution)
+#define DRIVER_PPR (5000)          //Pulse Per Round (Resolution)
 #define WHEEL_RADIUS (50)         //Wheel radius in mm
 #define AXLE_LENGTH (210)         //Axle effective length in mm
 
@@ -29,6 +29,7 @@ uint32_t lastRxTime = 0;
 IntervalTimer timer1;
 IntervalTimer timer2;
 
+//Odometry Variables
 float x = 0;
 float y = 0;
 float angle = 0;
@@ -51,7 +52,7 @@ void calculateOdometry() {
   float Dc = (Dl + Dr) / 2;
   x += Dc * cos(angle);
   y += Dc * sin(angle);
-  angle += (Dr - Dl) / AXLE_LENGTH;
+  angle += (Dl - Dr) / AXLE_LENGTH;
   prevPosL = currentPosL;
   prevPosR = currentPosR;
 }
@@ -126,7 +127,7 @@ void handleReceivedData() {
     if ((rx_index == 6) && (rx_buffer[0] == 'S') && (rx_buffer[5] == 'E')) {
       V = (rx_buffer[1] << 8) | rx_buffer[2];
       W1000 = (rx_buffer[3] << 8) | rx_buffer[4];
-      computerWheelVelocity();
+      computeWheelVelocity();
 
     }
     else if ((rx_index == 3) && (rx_buffer[0] == 'O') && (rx_buffer[1] == 'D') && (rx_buffer[2] == 'M')) {
@@ -161,7 +162,7 @@ void handleReceivedData() {
   }
 }
 
-void computerWheelVelocity() {
+void computeWheelVelocity() {
   Vl = V - ( ( (W1000 / 1000.0) * AXLE_LENGTH ) / 2 );
   Vr = V + ( ( (W1000 / 1000.0) * AXLE_LENGTH ) / 2 );
   motorL.setSpeed(convertToPPS(Vl));
