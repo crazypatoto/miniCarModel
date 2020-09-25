@@ -11,9 +11,9 @@
 #define AXLE_LENGTH (210)         //Axle effective length in mm
 
 //Car Model Variables
-const float wheel_circumference = 2 * WHEEL_RADIUS * M_PI;  //Wheel's Circumference in mm
+const float wheel_circumference = 2.0f * WHEEL_RADIUS * M_PI;  //Wheel's Circumference in mm
 int16_t V  = 0; //Car Linear Velocity (mm/s)
-int16_t W1000  = 0; //Car Angular Velocity (10000*rad/s)
+int16_t W1000  = 0; //Car Angular Velocity (1000*rad/s)
 float Vl = 0;   //Left Wheel Velocity (mm/s)
 float Vr = 0;   //Right Wheel Velocity (mm/s)
 
@@ -21,12 +21,11 @@ float Vr = 0;   //Right Wheel Velocity (mm/s)
 AccelStepper motorL(AccelStepper::DRIVER, DRIVER_L_PLS_PIN, DRIVER_L_DIR_PIN);
 AccelStepper motorR(AccelStepper::DRIVER, DRIVER_R_PLS_PIN, DRIVER_R_DIR_PIN);
 
-//Serial3 Variables
+//Serial2 Variables
 byte rx_buffer[SERIAL_RX_BUFFER_SIZE] = {0};
 uint16_t rx_index = 0;
 uint32_t lastRxTime = 0;
 
-IntervalTimer timer1;
 IntervalTimer timer2;
 
 //Odometry Variables
@@ -47,11 +46,11 @@ void calculateOdometry() {
   int32_t currentPosL = motorL.currentPosition();
   int32_t currentPosR = motorR.currentPosition();
 
-  float Dl = 2.0 * M_PI * WHEEL_RADIUS * (currentPosL - prevPosL) / DRIVER_PPR;
-  float Dr = 2.0 * M_PI * WHEEL_RADIUS * (currentPosR - prevPosR) / DRIVER_PPR;
+  float Dl = 2.0f * M_PI * WHEEL_RADIUS * (currentPosL - prevPosL) / DRIVER_PPR;
+  float Dr = 2.0f * M_PI * WHEEL_RADIUS * (currentPosR - prevPosR) / DRIVER_PPR;
   float Dc = (Dl + Dr) / 2;
-  x += Dc * cos(angle);
-  y += Dc * sin(angle);
+  x += Dc * cosf(angle);
+  y += Dc * sinf(angle);
   angle += (Dl - Dr) / AXLE_LENGTH;
   prevPosL = currentPosL;
   prevPosR = currentPosR;
@@ -68,31 +67,32 @@ void timer2_ISR() {
   Serial.print(y);
   Serial.print(" angle: ");
   //Serial.println((atan2(sin(angle), cos(angle)) / M_PI * 180));
-  Serial.println((atan2(sin(angle), cos(angle))));
+  Serial.println(angle);
 }
 
 void setup() {
   // put your setup code here, to run once:
   pinMode(LED_BUILTIN, OUTPUT);
-  Serial3.begin(115200);
+  Serial2.begin(115200);
   Serial.begin(115200);
   motorL.setMaxSpeed(convertToPPS(2000)); //max speed of 2m/s
   motorR.setMaxSpeed(convertToPPS(2000)); //max speed of 2m/s
-  timer2.begin(timer2_ISR, 100000);
+  //timer2.begin(timer2_ISR, 100000);
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  motorL.runSpeed();
+  noInterrupts();
   motorR.runSpeed();
-
+  motorL.runSpeed();
+  interrupts();
   handleReceivedData();
   calculateOdometry();
 }
 
-void serialEvent3() {
-  while (Serial3.available()) {
-    byte inByte = (byte)Serial3.read();
+void serialEvent2() {
+  while (Serial2.available()) {
+    byte inByte = (byte)Serial2.read();
     rx_buffer[rx_index++] = inByte;
     lastRxTime = micros();
   }
@@ -119,8 +119,8 @@ void serialEvent() {
 //  byte[0] 'S' Fixed character 'S'
 //  byte[1]  High Byte of Linear Velocity (mm/s)
 //  byte[2]  Low Byte of Linear Velocity (mm/s)
-//  byte[3]  High Byte of Angular Velocity (10000*rad/s)
-//  byte[4]  Low Byte of Angular Velocity (10000*rad/s)
+//  byte[3]  High Byte of Angular Velocity (1000*rad/s)
+//  byte[4]  Low Byte of Angular Velocity (1000*rad/s)
 //  byte[5] 'E' Fixed character 'E'
 void handleReceivedData() {
   if (((micros() - lastRxTime) > SERIAL_RX_TIMEOUT_US) && (rx_index > 0)) {
@@ -134,7 +134,8 @@ void handleReceivedData() {
       byte txbuff[6] = {0};
       int16_t _x = (int16_t)x;
       int16_t _y = (int16_t)y;
-      int16_t _angle = (int16_t)(atan2(sin(angle), cos(angle)) * 10000); //atan2(sin(angle),cos(angle)) keeps angle between -PI ~ PI
+      int16_t _angle = (int16_t)(atan2(sin(angle), cos(angle)) * 1000); //atan2(sin(angle),cos(angle)) keeps angle between -PI ~ PI
+      //int16_t _angle = (int16_t)(angle * 1000); //atan2(sin(angle),cos(angle)) keeps angle between -PI ~ PI
 
       txbuff[0] = (_x >> 8) & 0xFF;
       txbuff[1] = _x & 0xFF;
@@ -142,7 +143,7 @@ void handleReceivedData() {
       txbuff[3] = _y & 0xFF;
       txbuff[4] = (_angle >> 8) & 0xFF;
       txbuff[5] = _angle & 0xFF;
-      Serial3.write(txbuff, 6);
+      Serial2.write(txbuff, 6);
     } else if ((rx_index == 3) && (rx_buffer[0] == 'C') && (rx_buffer[1] == 'L') && (rx_buffer[2] == 'R')) {
       float speedL = motorL.speed();
       float speedR = motorR.speed();
@@ -155,8 +156,16 @@ void handleReceivedData() {
       angle = 0;
       prevPosL = 0;
       prevPosR = 0;
+    } else if ((rx_index == 8) && (rx_buffer[0] == 'O') && (rx_buffer[7] == 'E')) {
+      int16_t _x = (int16_t)((rx_buffer[1] << 8) | rx_buffer[2]);
+      int16_t _y = (int16_t)((rx_buffer[3] << 8) | rx_buffer[4]);      
+      int16_t _angle = (int16_t)((rx_buffer[5] << 8) | rx_buffer[6]);
+
+      x = (float)_x;
+      y = (float)_y;
+      angle = (float)_angle/1000.0;
     }
-    Serial.println(rx_index);
+    //Serial.println(rx_index);
     rx_index = 0;
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
   }
@@ -165,13 +174,15 @@ void handleReceivedData() {
 void computeWheelVelocity() {
   Vl = V - ( ( (W1000 / 1000.0) * AXLE_LENGTH ) / 2 );
   Vr = V + ( ( (W1000 / 1000.0) * AXLE_LENGTH ) / 2 );
+
   motorL.setSpeed(convertToPPS(Vl));
   motorR.setSpeed(convertToPPS(Vr));
-
-  Serial.print("Vl: ");
-  Serial.print(Vl);
-  Serial.print(" Vr: ");
-  Serial.println(Vr);
+  //Serial.println(motorL.currentPosition());
+  //Serial.println(motorR.currentPosition());
+  //  Serial.print("Vl: ");
+  //  Serial.print(Vl);
+  //  Serial.print(" Vr: ");
+  //  Serial.println(Vr);
 }
 
 //Coverts mm/s to pps(pulse per second)
