@@ -77,8 +77,8 @@ void setup() {
   Serial.begin(115200);
   motorL.setMaxSpeed(convertToPPS(2000)); //max speed of 2m/s
   motorR.setMaxSpeed(convertToPPS(2000)); //max speed of 2m/s
-  motorR.setPinsInverted(true,false,false);
-  //timer2.begin(timer2_ISR, 100000);
+  motorR.setPinsInverted(true, false, false);
+  //timer2.begin(timer2_ISR, 100000);  
 }
 
 void loop() {
@@ -159,12 +159,15 @@ void handleReceivedData() {
       prevPosR = 0;
     } else if ((rx_index == 8) && (rx_buffer[0] == 'O') && (rx_buffer[7] == 'E')) {
       int16_t _x = (int16_t)((rx_buffer[1] << 8) | rx_buffer[2]);
-      int16_t _y = (int16_t)((rx_buffer[3] << 8) | rx_buffer[4]);      
+      int16_t _y = (int16_t)((rx_buffer[3] << 8) | rx_buffer[4]);
       int16_t _angle = (int16_t)((rx_buffer[5] << 8) | rx_buffer[6]);
 
       x = (float)_x;
       y = (float)_y;
-      angle = (float)_angle/1000.0;
+      angle = (float)_angle / 1000.0;
+    } else if ((rx_index == 3) && (rx_buffer[0] == 'S') && (rx_buffer[1] == 'T') && (rx_buffer[2] == 'R')) {
+        startUpMusic();
+        Serial.println("Start Seq.");
     }
     //Serial.println(rx_index);
     rx_index = 0;
@@ -189,4 +192,69 @@ void computeWheelVelocity() {
 //Coverts mm/s to pps(pulse per second)
 float convertToPPS(float v) {
   return (DRIVER_PPR / wheel_circumference * v);
+}
+
+void startUpMusic() {
+  //float musicArray[] = {1046, 1175, 1319, 1398, 1568, 1761, 1980};
+  //float musicArray[] = {523.25, 587.33, 659.26, 698.46, 783.99, 880, 987.77};
+  float m = 4.5f;
+  float musicArray[] = {698.46, 880, 1108.73, 880, 698.46, 587.33, 587.33, 587.33};
+  int musiclastTime[] = {100 * m, 50 * m, 100 * m, 100 * m, 50 * m, 40 * m, 40 * m, 80 * m};
+  int musicDelay[] = {10 * m, 10 * m, 10 * m, 10 * m, 10 * m, 10 * m, 10 * m, 10 * m};
+  float musicSpeed = 0;
+  int toggle = 1;  
+
+  for (int i = 0; i < 8; i++, toggle *= -1) {
+    musicSpeed = musicArray[i];
+    motorL.setSpeed(musicSpeed * toggle);
+    motorR.setSpeed(musicSpeed * -toggle);
+    for (elapsedMillis timeElapsed; timeElapsed < musiclastTime[i];) {
+      motorL.runSpeed();
+      motorR.runSpeed();
+    }
+
+    motorL.setSpeed(0);
+    motorR.setSpeed(0);
+    for (elapsedMillis timeElapsed; timeElapsed < musicDelay[i];) {
+      motorL.runSpeed();
+      motorR.runSpeed();
+    }
+
+  }
+
+  //  musicSpeed = musicArray[0];
+  //  motorL.setSpeed(-musicSpeed);
+  //  motorR.setSpeed(musicSpeed);
+  //  for (elapsedMillis timeElapsed; timeElapsed < 300;) {
+  //    motorL.runSpeed();
+  //    motorR.runSpeed();
+  //  }
+  //
+  //  musicSpeed = musicArray[1];
+  //  motorL.setSpeed(musicSpeed);
+  //  motorR.setSpeed(-musicSpeed);
+  //  for (elapsedMillis timeElapsed; timeElapsed < 300;) {
+  //    motorL.runSpeed();
+  //    motorR.runSpeed();
+  //  }
+  //
+  //  musicSpeed = musicArray[2];
+  //  motorL.setSpeed(-musicSpeed);
+  //  motorR.setSpeed(musicSpeed);
+  //  for (elapsedMillis timeElapsed; timeElapsed < 300;) {
+  //    motorL.runSpeed();
+  //    motorR.runSpeed();
+  //  }
+  //
+  //  musicSpeed = musicArray[4];
+  //  motorL.setSpeed(musicSpeed);
+  //  motorR.setSpeed(-musicSpeed);
+  //  for (elapsedMillis timeElapsed; timeElapsed < 700;) {
+  //    motorL.runSpeed();
+  //    motorR.runSpeed();
+  //  }
+
+
+  motorL.setSpeed(0);
+  motorR.setSpeed(0);
 }
