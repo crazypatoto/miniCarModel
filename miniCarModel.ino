@@ -2,13 +2,13 @@
 
 #define SERIAL_RX_BUFFER_SIZE (128)
 #define SERIAL_RX_TIMEOUT_US (500) //microsecond Timeout
-#define DRIVER_L_PLS_PIN (5)      //Left Driver Pulse Pin
-#define DRIVER_L_DIR_PIN (6)      //Left Driver Direction Pin
-#define DRIVER_R_PLS_PIN (3)      //Right Driver Pulse Pin
-#define DRIVER_R_DIR_PIN (4)      //Right Driver Direction Pin
+#define DRIVER_L_PLS_PIN (3)      //Left Driver Pulse Pin
+#define DRIVER_L_DIR_PIN (4)      //Left Driver Direction Pin
+#define DRIVER_R_PLS_PIN (5)      //Right Driver Pulse Pin
+#define DRIVER_R_DIR_PIN (6)      //Right Driver Direction Pin
 #define DRIVER_PPR (8000)          //Pulse Per Round (Resolution)
 #define WHEEL_RADIUS (50)         //Wheel radius in mm
-#define AXLE_LENGTH (330)         //Axle effective length in mm
+#define AXLE_LENGTH (340)         //Axle effective length in mm
 
 //Car Model Variables
 const float wheel_circumference = 2.0f * WHEEL_RADIUS * M_PI;  //Wheel's Circumference in mm
@@ -57,9 +57,9 @@ void calculateOdometry() {
 }
 
 void timer2_ISR() {
-  Serial.print(motorL.currentPosition());
+  Serial.print(motorL.speed());
   Serial.print("\t");
-  Serial.println(motorR.currentPosition());
+  Serial.println(motorR.speed());
 
   Serial.print("x: ");
   Serial.print(x);
@@ -79,6 +79,9 @@ void setup() {
   motorR.setMaxSpeed(convertToPPS(2000)); //max speed of 2m/s
   motorR.setPinsInverted(true, false, false);
   //timer2.begin(timer2_ISR, 100000);  
+
+  //motorL.setSpeed(15000);
+  //motorR.setSpeed(15000);
 }
 
 void loop() {
@@ -253,7 +256,6 @@ void startUpMusic() {
   //    motorL.runSpeed();
   //    motorR.runSpeed();
   //  }
-
 
   motorL.setSpeed(0);
   motorR.setSpeed(0);
